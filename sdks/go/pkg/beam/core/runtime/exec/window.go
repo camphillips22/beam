@@ -23,6 +23,7 @@ import (
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/graph/mtime"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/graph/window"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/typex"
+	"github.com/apache/beam/sdks/v2/go/pkg/beam/log"
 )
 
 // WindowInto places each element in one or more windows.
@@ -116,17 +117,27 @@ func (m *MapWindows) StartBundle(ctx context.Context, id string, data DataContex
 }
 
 func (m *MapWindows) ProcessElement(ctx context.Context, elm *FullValue, values ...ReStream) error {
-	newW, err := m.Fn.MapWindow(elm.Elm2.(typex.Window))
+	log.Warnf(ctx, "MapWindows.ProcessElement: %s", elm)
+	var w typex.Window
+	switch v := elm.Elm2.(type) {
+	case window.GlobalWindow:
+		w = v
+	case window.IntervalWindow:
+		w = v
+	default:
+		panic(fmt.Sprintf("unknown window: %v", elm.Elm2))
+	}
+	newW, err := m.Fn.MapWindow(w)
 	if err != nil {
 		return err
 	}
-	w := &FullValue{
+	out := &FullValue{
 		Elm:       elm.Elm,
 		Elm2:      newW,
 		Timestamp: elm.Timestamp,
 		Windows:   elm.Windows,
 	}
-	return m.Out.ProcessElement(ctx, w, values...)
+	return m.Out.ProcessElement(ctx, out, values...)
 }
 
 func (m *MapWindows) FinishBundle(ctx context.Context) error {
