@@ -714,7 +714,7 @@ func (b *builder) makeLink(from string, id linkID) (Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		u = &MapWindower{UID: b.idgen.New(), Fn: mapper, Out: out[0]}
+		u = &MapWindows{UID: b.idgen.New(), Fn: mapper, Out: out[0]}
 
 	case graphx.URNFlatten:
 		u = &Flatten{UID: b.idgen.New(), N: len(transform.Inputs), Out: out[0]}
