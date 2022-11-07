@@ -245,6 +245,10 @@ func (b *CoderUnmarshaller) makeCoder(id string, c *pipepb.Coder) (*coder.Coder,
 				t := typex.New(root, append([]typex.FullType{key.T}, coder.Types(values)...)...)
 				return &coder.Coder{Kind: kind, T: t, Components: append([]*coder.Coder{key}, values...)}, nil
 			}
+		case urnIntervalWindow:
+			// If interval window in a KV, this may be a mapping function.
+			// Special case since windows are not normally used directly as FullValues.
+			return coder.NewIntervalWindowCoder(), nil
 		}
 
 		value, err := b.Coder(id)
