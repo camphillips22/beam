@@ -97,6 +97,50 @@ func (w *WindowInto) String() string {
 	return fmt.Sprintf("WindowInto[%v]. Out:%v", w.Fn, w.Out.ID())
 }
 
+type MapWindower struct {
+	UID UnitID
+	Fn  WindowMapper
+	Out Node
+}
+
+func (m *MapWindower) ID() UnitID {
+	return m.UID
+}
+
+func (m *MapWindower) Up(_ context.Context) error {
+	return nil
+}
+
+func (m *MapWindower) StartBundle(ctx context.Context, id string, data DataContext) error {
+	return m.Out.StartBundle(ctx, id, data)
+}
+
+func (m *MapWindower) ProcessElement(ctx context.Context, elm *FullValue, values ...ReStream) error {
+	newW, err := m.Fn.MapWindow(elm.Elm2.(typex.Window))
+	if err != nil {
+		return err
+	}
+	w := &FullValue{
+		Elm:       elm.Elm,
+		Elm2:      newW,
+		Timestamp: elm.Timestamp,
+		Windows:   elm.Windows,
+	}
+	return m.Out.ProcessElement(ctx, w, values...)
+}
+
+func (m *MapWindower) FinishBundle(ctx context.Context) error {
+	return m.Out.FinishBundle(ctx)
+}
+
+func (m *MapWindower) Down(_ context.Context) error {
+	return nil
+}
+
+func (m *MapWindower) String() string {
+	return fmt.Sprintf("MapWindower[%v]. Out:%v", m.Fn, m.Out.ID())
+}
+
 // WindowMapper defines an interface maps windows from a main input window space
 // to windows from a side input window space. Used during side input materialization.
 type WindowMapper interface {
