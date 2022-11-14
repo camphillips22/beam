@@ -118,24 +118,24 @@ func (m *MapWindows) StartBundle(ctx context.Context, id string, data DataContex
 
 func (m *MapWindows) ProcessElement(ctx context.Context, elm *FullValue, values ...ReStream) error {
 	log.Warnf(ctx, "MapWindows.ProcessElement: %s", elm)
-	var w typex.Window
-	switch v := elm.Elm2.(type) {
-	case window.GlobalWindow:
-		w = v
-	case window.IntervalWindow:
-		w = v
-	default:
-		panic(fmt.Sprintf("unknown window: %v", elm.Elm2))
-	}
-	newW, err := m.Fn.MapWindow(w)
+	//var w typex.Window
+	//switch v := elm.Elm2.(type) {
+	//case window.GlobalWindow:
+	//	w = v
+	//case window.IntervalWindow:
+	//	w = v
+	//default:
+	//	panic(fmt.Sprintf("unknown window: %v", elm.Elm2))
+	//}
+	newW, err := m.Fn.MapWindow(elm.Windows[0])
 	if err != nil {
 		return err
 	}
 	out := &FullValue{
 		Elm:       elm.Elm,
-		Elm2:      newW,
+		Elm2:      elm.Elm2,
 		Timestamp: elm.Timestamp,
-		Windows:   elm.Windows,
+		Windows:   []typex.Window{newW},
 	}
 	return m.Out.ProcessElement(ctx, out, values...)
 }
