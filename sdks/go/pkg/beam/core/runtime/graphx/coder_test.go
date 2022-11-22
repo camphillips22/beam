@@ -16,16 +16,12 @@
 package graphx_test
 
 import (
-	"bytes"
-	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/graph/coder"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/runtime"
-	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/runtime/exec"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/runtime/graphx"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/runtime/graphx/schema"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/typex"
@@ -44,47 +40,6 @@ type registeredNamedTypeForTest struct {
 
 func init() {
 	schema.RegisterType(reflect.TypeOf((*registeredNamedTypeForTest)(nil)))
-}
-
-func TestMyThing(t *testing.T) {
-
-	//0 128 0 1 132 156 174 78 224 224 212 3")
-	arr, err := readBytesFromString("0 128 0 1 132 156 174 78 224 224 212 3")
-	if err != nil {
-		panic(err)
-	}
-	kvc := coder.NewKV([]*coder.Coder{coder.NewBytes(), coder.NewIntervalWindowCoder()})
-	dec := exec.MakeElementDecoder(kvc)
-	v, err := dec.Decode(bytes.NewReader(arr))
-	fmt.Printf("%v, err: %s\n", v, err)
-
-	//arr, err = readBytesFromString("0 0 0 0 0 0 0 0 0 0 0 1 15")
-	//exec.DecodeWindowedValueHeader(exec.MakeWindowDecoder(coder.NewGlobalWindow()), bytes.NewReader(arr))
-}
-
-func TestThing2(t *testing.T) {
-	arr, err := readBytesFromString("0 0 0 0 0 0 0 0 0 0 0 1 15")
-	if err != nil {
-		panic(err)
-	}
-	w, e, pn, err := exec.DecodeWindowedValueHeader(exec.MakeWindowDecoder(coder.NewGlobalWindow()), bytes.NewReader(arr))
-	if err != nil {
-		t.Fatalf("wrong: %s", err)
-	}
-	t.Logf("%s, %s, %v", w, e, pn)
-}
-
-func readBytesFromString(s string) ([]byte, error) {
-	ss := strings.Split(s, " ")
-	var arr []byte
-	for _, v := range ss {
-		pv, err := strconv.ParseUint(v, 10, 8)
-		if err != nil {
-			return nil, err
-		}
-		arr = append(arr, byte(pv))
-	}
-	return arr, nil
 }
 
 // TestMarshalUnmarshalCoders verifies that coders survive a proto roundtrip.
