@@ -15,39 +15,68 @@
 
 // streaming_wordcap is a toy streaming pipeline that uses PubSub. It
 // does the following:
-//    (1) create a topic and publish a few messages to it
-//    (2) start a streaming pipeline that converts the messages to
-//        upper case and logs the result.
+//
+//	(1) create a topic and publish a few messages to it
+//	(2) start a streaming pipeline that converts the messages to
+//	    upper case and logs the result.
 //
 // NOTE: it only runs on Dataflow and must be manually cancelled.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/apache/beam/sdks/v2/go/pkg/beam"
+	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/graph/mtime"
+	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/graph/window"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/io/pubsubio"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/log"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/options/gcpopts"
+	"github.com/apache/beam/sdks/v2/go/pkg/beam/register"
+	"github.com/apache/beam/sdks/v2/go/pkg/beam/transforms/stats"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/util/pubsubx"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/x/beamx"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/x/debug"
 )
 
 var (
-	input = flag.String("input", os.ExpandEnv("$USER-wordcap"), "Pubsub input topic.")
+	input     = flag.String("input", os.ExpandEnv("$USER-wordcap"), "Pubsub input topic.")
+	startTime = time.Now()
 )
 
+type Payload struct {
+	Value     string    `json:"value,omitempty"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
+}
+
 var (
-	data = []string{
-		"foo",
-		"bar",
-		"baz",
+	data = []Payload{
+		{"foo", startTime.Truncate(time.Minute)},
+		{"foofoo", startTime.Truncate(time.Minute)},
+		{"bar", startTime.Truncate(time.Minute).Add(60 * time.Second)},
+		{"barbar", startTime.Truncate(time.Minute).Add(62 * time.Second)},
+		{"bazbaz", startTime.Truncate(time.Minute).Add(2 * time.Minute)},
 	}
 )
+
+func init() {
+	register.Function1x2[
+		*Payload,
+		beam.EventTime, *Payload,
+	](AddTimestampFn)
+}
+
+// AddTimestampFn adds a timestamp to the EventStreamMessage.
+// This is useful when a message does not have a timestamp, but needs to be
+// windowed.
+func AddTimestampFn(e *Payload) (beam.EventTime, *Payload) {
+	return mtime.FromTime(e.Timestamp), e
+}
 
 func main() {
 	flag.Parse()
@@ -58,8 +87,16 @@ func main() {
 
 	log.Infof(ctx, "Publishing %v messages to: %v", len(data), *input)
 
+	stringData := make([]string, len(data))
+	for i, d := range data {
+		dat, err := json.Marshal(d)
+		if err != nil {
+			log.Fatal(ctx, err)
+		}
+		stringData[i] = string(dat)
+	}
 	defer pubsubx.CleanupTopic(ctx, project, *input)
-	sub, err := pubsubx.Publish(ctx, project, *input, data...)
+	sub, err := pubsubx.Publish(ctx, project, *input, stringData...)
 	if err != nil {
 		log.Fatal(ctx, err)
 	}
@@ -70,10 +107,24 @@ func main() {
 	s := p.Root()
 
 	col := pubsubio.Read(s, project, *input, &pubsubio.ReadOptions{Subscription: sub.ID()})
-	str := beam.ParDo(s, func(b []byte) string {
-		return (string)(b)
+	payloads := beam.ParDo(s, func(b []byte) *Payload {
+		var p Payload
+		_ = json.Unmarshal(b, &p)
+		return &p
 	}, col)
-	cap := beam.ParDo(s, strings.ToUpper, str)
+
+	windowed := beam.WindowInto(s, window.NewFixedWindows(time.Minute), payloads)
+	meanLength := stats.Mean(s, beam.ParDo(s, func(p *Payload) int {
+		return len(p.Value)
+	}, windowed))
+
+	cap := beam.ParDo(s, func(p *Payload, getCutoff func(*float64) bool) string {
+		var cutoff float64
+		if getCutoff(&cutoff) && float64(len(p.Value)) > cutoff {
+			return strings.ToUpper(p.Value)
+		}
+		return p.Value
+	}, windowed, beam.SideInput{Input: meanLength})
 	debug.Print(s, cap)
 
 	if err := beamx.Run(context.Background(), p); err != nil {
